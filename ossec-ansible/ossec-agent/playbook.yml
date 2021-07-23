@@ -1,0 +1,123 @@
+---
+#$$$$$$$$$$$$$$$$$$$$$$$$$$Prerequistion-first-stage$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$
+#======================================================================================
+#-----------------host which shouldbe affected by this playbook------------------------
+- hosts: mehdi , test
+#----------make the ansible as a wheel group and make permissions high-----------------
+  become: yes
+  tasks:
+#----------Put-SELINUX-in-Permessive-mode and open-firewall ports6379/6380-------------
+    - name: Put SELinux in permissive mode, Open Ports for http(s)
+      selinux:
+        policy: targeted
+        state: permissive
+#---------------------------Inatall git and python-------------------------------------
+    - name: Install git and python3.7
+      yum:
+        name:
+         - git
+         - python
+         - python-pip
+#--------------------Install pexpect using for expect module---------------------------
+    - name: install pexpect
+      pip:
+        name: pexpect
+#---------------------------------Make_Dir /opt/ossec/---------------------------------
+    - name:  create directory /opt/ossec
+      file:
+        path: "{{item}}"
+        state: directory
+      with_items:
+        - '/opt/ossec'
+        - '/usr/local/src/ossec-src'
+        - '/usr/local/src/ossec-src/extract'
+#-----------------------------------Input Gitlab User&Pass-----------------------------
+- hosts: mehdi , test
+#----------make the ansible as a wheel group and make permissions high-----------------
+  vars_prompt:
+    - name: username
+      prompt: "What's your gitlab username?"
+      private: no
+
+    - name: password
+      prompt: "What's your gitlab password?"
+#------------------------------Clone files from gitlab----------------------------------
+#- hosts: mehdi , ossec
+#----------make the ansible as a wheel group and make permissions high-----------------
+  become: yes
+  tasks:
+    - name: git clone
+      expect:
+        command: git clone http://gitlab/asamasach/ossec-ansible.git
+        responses:
+          'Username(?i)': "{{ username}}"
+          'Password(?i)': "{{ password }}"
+        timeout: null
+      args:
+          chdir: /usr/local/src
+      ignore_errors: yes
+#-----------------host which shouldbe affected by this playbook------------------------
+- hosts: test
+#----------make the ansible as a wheel group and make permissions high-----------------
+  become: yes
+  tasks:
+#---------------------------add agents list to manage----------------------------------
+#!! this block contain a shell script check it before run it
+    - name: add agents to ossec server
+      command: bash /usr/local/src/ossec-ansible/ossec-agent/bash/add-agents.sh
+#---------------------------add agents list to manage----------------------------------
+#!! this block contain a shell script check it before run it
+    - name: create seperated key files for client.key
+      command: bash /usr/local/src/ossec-ansible/ossec-agent/bash/make-key.sh
+#-------------------fetch all key files of ossec to ansible host-----------------------
+    - name: fetch all .oscky to ansible host
+      fetch:
+        src: /usr/local/src/ossec-ansible/ossec-agent/files/oscky.tar.gz
+        dest: /usr/local/src/ossec-ansible/ossec-agent/files/
+#-----------------host which shouldbe affected by this playbook------------------------
+- hosts: mehdi
+#----------make the ansible as a wheel group and make permissions high-----------------
+  become: yes
+  tasks:
+#---------------------------copy from oscky.tar.gz-------------------------------------
+    - name: Copy file oscky.tar.gz
+      copy:
+        src: /usr/local/src/ossec-ansible/ossec-agent/files/oscky.tar.gz
+        dest: /usr/local/src/ossec-ansible/ossec-agent/files/oscky.tar.gz
+#---------------------------------Make_Dir /opt/ossec/---------------------------------
+    - name:  create directory /opt/ossec
+      file:
+        path: "{{item}}"
+        state: directory
+      with_items:
+        - '/usr/local/src/ossec-ansible/ossec-agent/files/oscky'
+#-------------------------extract key files to local dir-------------------------------
+    - name: Extract key file to location
+      unarchive:
+        src: /usr/local/src/ossec-ansible/ossec-agent/files/oscky.tar.gz
+        dest: /usr/local/src/ossec-ansible/ossec-agent/files/oscky
+        remote_src: yes
+#---------------------yum install gcc and postgres for ossec---------------------------
+    - name: Install gcc postgres and mysql
+      yum:
+        name:
+          - gcc
+          - postgresql-devel
+          - mysql-devel
+#---------------------------------Download ossec source--------------------------------
+    - name: Download Ossec server or agent
+      get_url:
+        url: https://github.com/ossec/ossec-hids/archive/3.3.0.tar.gz
+        dest: /usr/local/src/ossec-src
+#---------------------------------Extract ossec tar file-------------------------------
+    - name: Extract Ossec server code
+      unarchive:
+        src: /usr/local/src/ossec-src/ossec-hids-3.3.0.tar.gz
+        dest: /usr/local/src/ossec-src/extract/
+        remote_src: yes
+#---------------------------------Installing ossec agent-------------------------------
+#    - name: Install Ossec-agent
+#      command: /usr/local/src/ossec-src/extract/ossec-hids-3.3.0/install.sh < /usr/local/src/ossec-ansible/ossec-agent/files/install-agent.txt
+#------------------------------run manage agent to add key-----------------------------
+    - name: add key to agents
+      command: /var/ossec/bin/manage-agent < /usr/local/src/ossec-ansible/ossec-agent/files/oscky/{{ ansible_facts["ens192"]["ipv4"]["address"] }}.oscky

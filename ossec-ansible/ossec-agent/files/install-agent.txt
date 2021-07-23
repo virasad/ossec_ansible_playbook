@@ -1,0 +1,14 @@
+en
+
+agent
+/var/ossec
+192.168.20.2
+y
+y
+n
+y
+
+
+
+
+
